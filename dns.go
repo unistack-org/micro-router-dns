@@ -5,18 +5,12 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/micro/go-micro/v3/router"
+	"github.com/unistack-org/micro/v3/router"
 )
 
 // NewRouter returns an initialized dns router
 func NewRouter(opts ...router.Option) router.Router {
-	options := router.DefaultOptions()
-	for _, o := range opts {
-		o(&options)
-	}
-	if len(options.Network) == 0 {
-		options.Network = "micro"
-	}
+	options := router.NewOptions(opts...)
 	return &dns{options}
 }
 
@@ -43,9 +37,10 @@ func (d *dns) Close() error {
 	return nil
 }
 
-func (d *dns) Lookup(service string, opts ...router.LookupOption) ([]router.Route, error) {
+func (d *dns) Lookup(opts ...router.QueryOption) ([]router.Route, error) {
+	options := router.NewQuery(opts...)
 	// check to see if we have the port provided in the service, e.g. go-micro-srv-foo:8000
-	host, port, err := net.SplitHostPort(service)
+	host, port, err := net.SplitHostPort(options.Service)
 	if err == nil {
 		// lookup the service using A records
 		ips, err := net.LookupHost(host)
@@ -59,7 +54,7 @@ func (d *dns) Lookup(service string, opts ...router.LookupOption) ([]router.Rout
 		result := make([]router.Route, len(ips))
 		for i, ip := range ips {
 			result[i] = router.Route{
-				Service: service,
+				Service: options.Service,
 				Address: fmt.Sprintf("%s:%d", ip, uint16(p)),
 			}
 		}
@@ -68,7 +63,7 @@ func (d *dns) Lookup(service string, opts ...router.LookupOption) ([]router.Rout
 
 	// we didn't get the port so we'll lookup the service using SRV records. If we can't lookup the
 	// service using the SRV record, we return the error.
-	_, nodes, err := net.LookupSRV(service, "tcp", d.options.Network)
+	_, nodes, err := net.LookupSRV(options.Service, "tcp", d.options.Network)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +72,7 @@ func (d *dns) Lookup(service string, opts ...router.LookupOption) ([]router.Rout
 	result := make([]router.Route, len(nodes))
 	for i, n := range nodes {
 		result[i] = router.Route{
-			Service: service,
+			Service: options.Service,
 			Address: fmt.Sprintf("%s:%d", n.Target, n.Port),
 			Network: d.options.Network,
 		}
@@ -87,6 +82,10 @@ func (d *dns) Lookup(service string, opts ...router.LookupOption) ([]router.Rout
 
 func (d *dns) Watch(opts ...router.WatchOption) (router.Watcher, error) {
 	return nil, nil
+}
+
+func (d *dns) Name() string {
+	return d.options.Name
 }
 
 func (d *dns) String() string {
